@@ -7,4 +7,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Reference Include="CutGLib">
+      <HintPath>..\libs\CutGLib.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
 </Project>
