@@ -1,5 +1,4 @@
-﻿using CutGLib;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using System.Text.Json.Serialization;
 
 namespace CutGLibSample
@@ -8,60 +7,66 @@ namespace CutGLibSample
     {
         static void Main(string[] args)
         {
-            CutEngine cutEngine = new CutEngine();
+            Console.WriteLine("=== Single Result");
+            Console.WriteLine(JsonConvert.SerializeObject(TestSinglePerformance(), Formatting.Indented));
 
-            cutEngine.AddLinearStock(ALength: 1000.0, aCount: 25);
+            Console.WriteLine("=== Single");
+            Console.WriteLine(TestSinglePerformance().ElapsedTime);
 
-            cutEngine.AddLinearPart(ALength: 150.0, aCount: 4, aAngleStart: 45.0, aAngleEnd: 45.0, aID: "Part_1");
-            cutEngine.AddLinearPart(ALength: 250.0, aCount: 4, aAngleStart: 45.0, aAngleEnd: 45.0, aID: "Part_2");
-            cutEngine.AddLinearPart(ALength: 100.0, aCount: 4, aID: "Part_3");
-
-            var resultMessage = cutEngine.ExecuteLinear();
-
-            var linearCutsCount = cutEngine.GetLinearCutsCount();
-            var linearCuts = new List<object>();
-            var maxStockCutCount = 0;
-            for (int i = 0; i < linearCutsCount; i++)
+            Console.WriteLine("=== Mutiple");
+            int threads = 25;
+            int threadCounter = 0;
+            TestMultiplePerformance(threads, (result) =>
             {
-                cutEngine.GetLinearCut(i, out int stock, out double location);
-                linearCuts.Add(new { Index = i, Stock = stock, Location = location });
-                maxStockCutCount = stock;
-            }
+                Console.WriteLine($"{result.ElapsedTime}");
+                Interlocked.Increment(ref threadCounter);
+            });
+            while (threadCounter < threads) {  }
+        }
 
-            var linearStockCuts = new List<object>();
-            for (int i = 0; i < maxStockCutCount; i++)
+        public static CuttingOptimization GetCuttingOptimization()
+        {
+            var cutOpti = new CuttingOptimization
             {
-                var stockCutCount = cutEngine.GetStockCutCount(i);
-
-                for (int j = 0; j < stockCutCount; j++)
-                {
-                    cutEngine.GetLinearStockCut(i, j, out double location, out double angle);
-                    linearStockCuts.Add(new { Stock = i, Cut = j, Location = location, Angle = angle });
-                }
-            }
-
-            var partCount = cutEngine.PartCount;
-            var resultLinearParts = new List<object>();
-
-            for (int i = 0; i <= partCount; i++)
-            {
-                var fromStock = cutEngine.GetResultLinearPart(i, out int stock, out double length, out double angleStart, out double angleEnd, out double location, out bool rotated, out bool flipped, out string id);
-                resultLinearParts.Add(new { Part = i, Stock = stock, Length = length, AngleStart = angleStart, AngleEnd = angleEnd, Rotated = rotated, Flipped = flipped, Location = location, Id = id, FromStock = fromStock });
-            }
-            
-
-            object cutResult = new
-            {
-                ResultMessage = resultMessage,
-                LinearCutsCount = cutEngine.GetLinearCutsCount(),
-                LinearCuts = linearCuts,
-                MaxStockCutCount = maxStockCutCount,
-                LinearStockCuts = linearStockCuts,
-                PartCount = partCount,
-                ResultLinearParts = resultLinearParts,
+                SawBladeWidth = 6.0,
+                BufferLeft = 15.0,
+                BufferRight = 0.0,
+                UseLinearSortAscending = true,
+                UseLinearExactAngle = false,
+                AllowLinearFlipping = true,
+                AllowLinearRotation = true,
+                UseLargeStockFirst = true,
+                UseCompleteMode = true
             };
+            cutOpti.AddLinearStock(new CuttingOptimization.CuttingOptimizationInputStock(id: "Iron Rod - 6m", length: 6000.0, count: 5, isWaste: false));
+            cutOpti.AddLinearStock(new CuttingOptimization.CuttingOptimizationInputStock(id: "Iron Rod - 4m", length: 4000.0, count: 5, isWaste: false));
+            cutOpti.AddLinearPart(new CuttingOptimization.CuttingOptimizationInputLinearPart(id: "Iron Rod - 1.25m", count: 4, length: 1250.0, angleStart: 90.0, angleEnd: 90.0));
+            cutOpti.AddLinearPart(new CuttingOptimization.CuttingOptimizationInputLinearPart(id: "Iron Rod - 0.77m, AS 45°, AE 45°", count: 8, length: 770.0, angleStart: 45.0, angleEnd: 45.0));
+            cutOpti.AddLinearPart(new CuttingOptimization.CuttingOptimizationInputLinearPart(id: "Iron Rod - 0.77m, AS 45°, AE 90°", count: 10, length: 77.0, angleStart: 45.0, angleEnd: 90.0));
+            cutOpti.AddLinearPart(new CuttingOptimization.CuttingOptimizationInputLinearPart(id: "Iron Rod - 0.90m, AS 63°, AE 43°", count: 10, length: 900.0, angleStart: 63.0, angleEnd: 43.0));
+            return cutOpti;
+        }
 
-            Console.WriteLine(JsonConvert.SerializeObject(cutResult, Formatting.Indented));
+        public static CuttingOptimization.CuttingOptimizationResult TestSinglePerformance()
+        {
+            return GetCuttingOptimization().GetResult();
+        }
+
+        public static void TestMultiplePerformance(int threads, Action<CuttingOptimization.CuttingOptimizationResult> onResult)
+        {
+            var tasks = new List<Task>();
+            for (int i = 1; i <= threads; i++)
+            {
+                tasks.Add(new Task(() =>
+                {
+                    var cutOpti = GetCuttingOptimization();
+                    onResult.Invoke(cutOpti.GetResult());
+                }));
+            }
+            tasks.ForEach(x =>
+            {
+                x.Start();
+            });
         }
     }
 }
